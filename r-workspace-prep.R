@@ -12,3 +12,6 @@ library(broom)
 library(Hmisc)
 library(RColorBrewer)
 library(readxl)
+
+# Color palettes
+rdgy_pal <- brewer.pal(11, "RdGy")

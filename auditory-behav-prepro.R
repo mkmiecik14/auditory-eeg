@@ -38,8 +38,11 @@ behav_data <-
   filter(complete.cases(value)) %>% # gets rid of missing values
   separate(name, into = c("meas", "delete")) %>% # simplifies
   select(-delete) %>% # gets rid of useless column
-  arrange(ss, intensity) # arranges for aesthetics
-
+  arrange(ss, intensity) %>% # arranges for aesthetics
+  # decided to get rid of RT as this was entered by testers and is therefore 
+  # not meaningful
+  filter(meas == "rating") 
+  
 # Saves out cleaned and processed data ----
 save(behav_data, file = "../output/behav-data.RData")
 
