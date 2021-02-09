@@ -62,3 +62,20 @@ behav_data_groups %>%
   group_by(intensity, group) %>%
   summarise(m = mean(value), sd = sd(value), n = n(), sem = sd/sqrt(n)) %>%
   ungroup()
+
+# plotting subject slopes
+ggplot(behav_data_groups, aes(intensity, value, group = ss, color = group)) +
+  geom_line(
+    stat = "smooth", 
+    method = "lm", 
+    formula = y ~ x, 
+    se = FALSE, 
+    alpha = 3/4
+    ) +
+  geom_smooth(aes(group = group), method = "lm", color = "black") +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Intensity", y = "Unpleasantness") +
+  theme_minimal() +
+  facet_wrap(~group)
+  
+
