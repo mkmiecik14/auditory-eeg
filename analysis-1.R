@@ -13,6 +13,8 @@ source("r-workspace-prep.R")
 # Load data ----
 load("../output/behav-data.RData") # behav data
 load("../output/ss-groups.RData") # participant groups
+load("../output/med-assess.RData") # medical assessment data
+load("../output/med-screen.RData") # medical screening data
 
 # MLM ----
 
@@ -42,9 +44,9 @@ boot_data <-
   ungroup() %>% 
   left_join(., select(ss_groups, ss, group), by = "ss")
 
-# Bootstrapping procedure
 boot_iters <- 2000 # the number of bootstrap iterations
-# set.seed(14) # remember to set the seed
+set.seed(14) # sets seed for reproducible results
+
 # initialized list to store results
 boot_data_fill <- vector("list", length = boot_iters) 
 loop_data <- boot_data %>% select(ss, group) %>% group_by(group)
@@ -154,7 +156,75 @@ order_lvl2_mod %>%
 #               #
 #################
 
-lvl1_est
+# Prepares age data
+med_age <- 
+  med_screen %>% 
+  select(ss = subject_id, age = mh2_age) %>% 
+  filter(complete.cases(ss))
 
+# Combines regression 
+lvl2_data <- lvl1_est %>% left_join(., med_age, by = "ss")
+lvl2_data %>% filter(is.na(age)) # two participants don't have age
+
+# Quick plots
+ggplot(lvl2_data, aes(age, estimate)) +
+  geom_point(shape = 19, alpha = 1/3) +
+  geom_smooth(method = "lm", se = FALSE, color = rdgy_pal[3]) +
+  theme_minimal() +
+  facet_wrap(~term)
+
+# Runs level 2 mods
+lvl2_mod <- 
+  lvl2_data %>%
+  filter(complete.cases(age)) %>% # filters out two ss with missing age
+  nest_by(term) %>%
+  mutate(mod = list(lm(estimate ~ 1 + scale(age, scale = FALSE), data = data)))
+
+lvl2_mod %>% 
+  summarise(broom::tidy(mod)) %>%
+  ungroup() %>%
+  mutate(
+    source = rep(lvl2_mod$term, each = 2),
+    term = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      term == "scale(age, scale = FALSE)" ~ "Age_mc"
+    )
+    )
+
+# Trying to bootstrap 2nd level analysis
+lvl2_boot_data <- 
+  lvl2_data %>%
+  filter(complete.cases(age)) %>% # removes ss w/o age
+  left_join(., select(ss_groups, ss, group), by = "ss") # adds ss groups
+
+# Intercept data
+int_data <- lvl2_boot_data %>% filter(term %in% "Intercept") %>% group_by(group)  
+# Slope data
+slope_data <- lvl2_boot_data %>% filter(term %in% "Intensity_mc") %>% group_by(group) 
+
+
+# Bootstrapping ----
+boot_iters <- 2000 # the number of bootstrap iterations
+# seed was set above for reproducible results
+
+# initialized list to store results
+int_data_fill <- vector("list", length = boot_iters) -> slope_data_fill
+
+
+for (i in 1:boot_iters){
+  # Creates intercept bootstrapped data
+  int_data_fill[[i]]  <- 
+    int_data %>%
+    slice_sample(prop = 1, replace = TRUE) %>%
+    ungroup()
   
+  # Creates slope bootstrapped data
+  slope_data_fill[[i]]  <- 
+    slope_data %>%
+    slice_sample(prop = 1, replace = TRUE) %>%
+    ungroup()
+}
+
+int_data_fill %>%
+  map(function(x) x %>% nest_by(group) %>% mutate(mod = list(lm(estimate))))
 
