@@ -225,6 +225,109 @@ for (i in 1:boot_iters){
     ungroup()
 }
 
-int_data_fill %>%
-  map(function(x) x %>% nest_by(group) %>% mutate(mod = list(lm(estimate))))
+# Intercept lvl2 mods
+int_mods <- 
+  int_data_fill %>%
+  map(function(x) 
+    x %>% 
+      nest_by(group) %>% 
+      mutate(
+        mod = list(lm(estimate ~ 1 + scale(age, scale = FALSE), data = data))
+        )
+    )
 
+# Intensity slope lvl2 mods
+slope_mods <- 
+  slope_data_fill %>%
+  map(function(x) 
+    x %>% 
+      nest_by(group) %>% 
+      mutate(
+        mod = list(lm(estimate ~ 1 + scale(age, scale = FALSE), data = data))
+      )
+  )
+
+# Intercept lvl2 estimates
+int_ests <- 
+  int_mods %>%
+  map_dfr(function(x) x %>% summarise(broom::tidy(mod)) %>% ungroup(), .id = "iter") %>%
+  mutate(
+    source = "Intercept",
+    term = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      term == "scale(age, scale = FALSE)" ~ "Age_mc"
+    )
+    )
+
+# Intensity slope lvl2 estimates
+slope_ests <- 
+  slope_mods %>%
+  map_dfr(function(x) x %>% summarise(broom::tidy(mod)) %>% ungroup(), .id = "iter") %>%
+  mutate(
+    source = "Intensity_mc",
+    term = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      term == "scale(age, scale = FALSE)" ~ "Age_mc"
+    )
+  )
+  
+# Final bootstrapping results
+age_boot_res <- 
+  bind_rows(int_ests, slope_ests) %>%
+  group_by(source, term, group) %>%
+  summarise(
+    m = mean(estimate), 
+    n = n(), 
+    sd = sd(estimate),     
+    ll = quantile(estimate, .025),
+    ul = quantile(estimate, .975)
+    ) %>%
+  ungroup() %>%
+  mutate(
+    source = factor(source), 
+    term = factor(term),
+    source = fct_relevel(source, c("Intercept", "Intensity_mc")),
+    term = fct_relevel(term, c("Intercept", "Age_mc"))
+    )
+
+# Intercept model
+ggplot(filter(age_boot_res, source == "Intercept"), aes(group, m)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = ll, ymax = ul), width = .2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "Group", 
+    y = "Regression Estimate", 
+    title = "Intercept Model", 
+    caption = "Bootstrapped 95% CI error bars."
+    ) +
+  theme_minimal() +
+  facet_wrap(~term)
+
+# Intensity Model
+ggplot(filter(age_boot_res, source == "Intensity_mc"), aes(group, m)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = ll, ymax = ul), width = .2) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  labs(
+    x = "Group", 
+    y = "Regression Estimate", 
+    title = "Intensity Model", 
+    caption = "Bootstrapped 95% CI error bars."
+  ) +
+  theme_minimal() +
+  facet_wrap(~term)
+
+# Quick plots
+lvl2_boot_data %>%
+  mutate(
+    term = factor(term), 
+    term = fct_relevel(term, c("Intercept", "Intensity_mc"))
+    ) %>%
+ggplot(aes(age, estimate, group = group, color = group)) +
+  geom_point(shape = 19, alpha = 1/3) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Age", y = "Regression Estimate") +
+  facet_wrap(~term)
